@@ -15,14 +15,15 @@ data <- data %>% separate(quarter_year, c("quarter", "year")) %>% arrange(desc(y
 data$year <- as.integer(data$year)
 data$yearqtr <- as.yearqtr(paste(data$year," ",data$quarter) )%>% format(tt,format = "%Y-Q%q")
 country_data_per_year <- data%>% group_by(Country,year) %>% summarise(total = sum(number_of_cars)) %>% arrange(Country,year)
+countries_by_total <- data%>% group_by(Country) %>% summarise(total = sum(number_of_cars)) %>% arrange(desc(total))
+
 
 ui <- fluidPage(
    
-   # Application title
    titlePanel("Electric Car in EU "),
    
    tabsetPanel(
-     tabPanel("Plot", br(), br(), fluidRow(
+     tabPanel("Basic bar chart", br(), br(), fluidRow(
        column(3,
               selectInput("filter", "Filter by market size",
                           c("Large", "Medium","Small","All"),
@@ -36,20 +37,26 @@ ui <- fluidPage(
                           c("Large", "Medium","Small","All"),
                           selected = "Large"),
               checkboxGroupInput("check_year", 
-                                 h3("Filter by year"), 
+                                 ("Filter by year"), 
                                  c("2015","2016","2017"),selected = "2017")),
        column(9, plotlyOutput("plot2"))) 
+     ),
+     tabPanel("Line Chart", br(), br(), fluidRow(
+       column(3,
+              selectInput("filter3", "Filter by market size",
+                          c("Large", "Medium","Small","All"),
+                          selected = "Large"), br(),
+              checkboxGroupInput("check_country", 
+                                 "Instead Manually Select Countries to plot", 
+                                 c(as.character(unique(countries_by_total[["Country"]])))
+                                 ,selected = NA) ),
+       column(9, plotlyOutput("plot3"))) 
      )
      
      )
    
 )
-
-# Define server logic required to draw a histogram
 server <- function(input, output) {
-  
-  
-  
   
   data_plot1 <- reactive({
     if (input$filter == "All"){
@@ -126,11 +133,41 @@ server <- function(input, output) {
     
   })
   
+  data_plot3 <- reactive({
+    p <- data
+    
+    if (length(input$check_country) >= 1){
+      filter(p, Country %in% input$check_country )
+    }else{
+      if (input$filter3 == "All"){
+        p
+      }else if (input$filter3 == "Large"){
+        c <- p %>% group_by(Country) %>% summarise(total = sum(number_of_cars)) %>%  top_n(n = 5, wt = total) 
+        c <- c$Country
+        filter(p, Country %in% c)
+      }else if (input$filter3 == "Medium"){
+        c <- p %>% group_by(Country) %>% summarise(total = sum(number_of_cars)) %>%  top_n(n = -20, wt = total) %>%  top_n(n = 9, wt = total)
+        c <- c$Country
+        filter(p, Country %in% c) 
+      }else if (input$filter3 == "Small"){
+        c <- p %>% group_by(Country) %>% summarise(total = sum(number_of_cars)) %>%  top_n(n = -11, wt = total) 
+        c <- c$Country
+        filter(p, Country %in% c) 
+      }
+    }
+  })
   
-   
+  output$plot3 <- renderPlotly({
+    line_data <- data_plot3()
+    ggplot(data = line_data, aes(x = as.Date(as.yearqtr(line_data$yearqtr,format = "%Y-Q%q")), y = number_of_cars)) + 
+        geom_line(aes(color = Country), size = 1) +
+        theme_classic()+theme(axis.title.x=element_blank())
+        
+      
+  })
+  
    
 }
 
-# Run the application 
 shinyApp(ui = ui, server = server)
 
